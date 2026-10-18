@@ -458,6 +458,16 @@ training:
 soup train --config soup.yaml
 ```
 
+**Model and tokenizer code.** With `training.stream_layers: true`, Soup uses
+Transformers' own implementation for the model config, the meta skeleton used by
+setup probes, and the streamed model. `--trust-remote-code` still reaches the
+tokenizer, so a supported model can use a tokenizer supplied as custom repository
+code. For example, Moonlight-16B-A3B needs that flag for its tokenizer while its
+`deepseek_v3` model uses the native implementation that matches Soup's stacked
+expert shards. Streaming requires a supported native model implementation; the
+flag does not enable custom model code on this path. The dated Moonlight hardware
+runs are recorded in the [probe report](../benchmarks/probe-rtx5070-moonlight-16b.md).
+
 **How it works.** LoRA adapters + their gradients + optimizer state stay resident in VRAM (they are small). The frozen base lives in CPU RAM, page-locked when the machine allows it, and is streamed: each decoder layer is copied into one of two pre-allocated VRAM buffers on a dedicated CUDA stream while the previous layer is still computing, so the load overlaps the compute. Vocabulary-sized `embed_tokens` and an untied `lm_head` use one additional shared slot: the embedding is loaded for the model input, then the same allocation is reused for the output head, whose copy is issued right after the embedding lookup (`StreamPrefetcher.head_prefetch_layer`, default `0`) rather than at the last decoder layer, and the embedding is reloaded into it at the tail of that step's backward pass so the copy overlaps the remaining compute instead of blocking the next step's first lookup. Each decoder layer is read **twice** per step — once in the forward pass and once when the backward pass recomputes it — because `dL/dx = Wᵀ · dL/dy` needs the weights to reach the layers below. That is physics, not an implementation detail, and it is why streaming costs time.
 
 For streamed NF4 on CUDA, Soup follows bitsandbytes' own 4-bit dispatch. When
@@ -1013,6 +1023,10 @@ all-masked sequence or saving a non-finite adapter.
 ### `--trust-remote-code` opt-in (every command, every trainer)
 
 Every command that loads a model now requires `--trust-remote-code` to execute custom Python from a model repo (`auto_map` in `config.json`). First-party orgs (Meta, Mistral, Qwen, Google, etc.) suppress the warning panel; everything else prints a `REMOTE CODE WARNING` panel before loading. Unknown-org local checkpoints with `auto_map` raise a friendly `ValueError` at construction time instead of silently exec'ing inside `from_pretrained`.
+
+For [layer streaming](#layer-streaming-beta-v0720-nf4-v0722-disk--wider-archs-v0723-preference-losses-v0724),
+the flag authorizes tokenizer code only; the model config, setup probes and model
+always use the supported native Transformers implementation.
 
 Coverage:
 - `soup train` (every task - SFT, DPO, GRPO, KTO, ORPO, SimPO, IPO, PPO, Reward Model, Pretrain, Embedding, BCO, and the unified Preference dispatcher; automatic evaluation after training follows the run's flag, see `docs/evaluation.md`)
