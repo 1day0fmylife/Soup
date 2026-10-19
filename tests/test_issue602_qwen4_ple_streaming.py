@@ -701,6 +701,9 @@ def _drive_qwen4_streaming_setup(
     shard_calls=None,
     load_calls=None,
     trust_remote_code=False,
+    tcfg_overrides=None,
+    disk_kind="ssd",
+    disk_calls=None,
 ):
     """Drive the real `_setup_streaming_transformers()` for a qwen4_exp base.
 
@@ -718,7 +721,10 @@ def _drive_qwen4_streaming_setup(
     (`tests/test_deepseek_v3_streaming.py`); `shard_calls`, when a list, receives
     the keyword arguments of every `shard_checkpoint` call; `load_calls`, when a
     dict, receives the keyword arguments of the tokenizer, config and
-    `build_streamed_model` calls under "tokenizer", "config" and "build".
+    `build_streamed_model` calls under "tokenizer", "config" and "build";
+    `tcfg_overrides`, when a dict, sets extra training-config attributes;
+    `disk_kind` is what the stubbed `resolve_disk_kind` reports; `disk_calls`,
+    when a list, receives the (path, override) of every call to it.
     """
     import sys
     import types
@@ -765,6 +771,8 @@ def _drive_qwen4_streaming_setup(
             alpha_pattern=None,
         ),
     )
+    for name, value in (tcfg_overrides or {}).items():
+        setattr(tcfg, name, value)
     if model_cfg is None:
         model_cfg = types.SimpleNamespace(
             model_type="qwen4_exp",
@@ -868,10 +876,12 @@ def _drive_qwen4_streaming_setup(
         "soup_cli.utils.layer_stream_runtime.large_layer_buffer_bytes",
         lambda *_a, **_k: 0,
     )
-    monkeypatch.setattr(
-        "soup_cli.utils.layer_stream.resolve_disk_kind",
-        lambda *_a, **_k: types.SimpleNamespace(kind="ssd"),
-    )
+    def _resolve_disk_kind(path=None, override=None, **_kwargs):
+        if disk_calls is not None:
+            disk_calls.append((path, override))
+        return types.SimpleNamespace(kind=disk_kind)
+
+    monkeypatch.setattr("soup_cli.utils.layer_stream.resolve_disk_kind", _resolve_disk_kind)
     monkeypatch.setattr(
         "soup_cli.utils.layer_stream.render_stream_panel", lambda *_a, **_k: "panel"
     )
