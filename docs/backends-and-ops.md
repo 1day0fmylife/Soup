@@ -205,6 +205,19 @@ Works with the tasks that have an unsloth setup: SFT (text; SFT vision and audio
 
 > **Tip:** Soup auto-detects unsloth. When it is installed, `soup train` prints a hint if you haven't enabled it yet and your config would load with it.
 
+### Gradient checkpointing on Unsloth
+
+On `backend: unsloth`, `training.gradient_checkpointing` is honoured instead of silently ignored ([#797](https://github.com/MakazhanAlpamys/Soup/issues/797)):
+
+- `false` (the schema default) disables checkpointing and may increase activation memory.
+- `true` (or a tier: `selective`, `medium`, `full`, `auto`) enables Unsloth's optimized checkpointing; throughput and maximum context depend on the workload.
+- Layer streaming (`training.stream_layers: true`) already checkpoints every layer, so the Unsloth kernel stays off there whatever the flag says.
+
+```yaml
+training:
+  gradient_checkpointing: true  # keep Unsloth's optimized checkpointing
+```
+
 
 ## Cloud GPU Training
 
