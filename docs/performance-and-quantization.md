@@ -500,7 +500,7 @@ What the VRAM pre-flight counts:
 - the layer buffers, measured from the dense-only layer files;
 - plus one routed expert in flight, shown as an `experts` line.
 
-The disk pre-flight charges the NF4 rate to every parameter, which is close to this layout's cache (8.7 GB for Moonlight) and under-counts a fused MoE cache, whose experts stay unquantised (30.6 GB).
+What the disk pre-flight counts: the cache the sharder will write in the layout you chose, sized from the source safetensors headers (see "Disk pre-flight and shard cache" below). Under `quantization: 4bit` that is the experts at NF4 here and at the stream dtype with `fused`: for Moonlight it charges 9.24 GB here and 30.60 GB fused, within 0.01% of the caches the sharder then wrote. (Before, it charged the NF4 rate to every parameter, 8.23 GB in both layouts, so a fused run could pass the check and fill the disk mid-shard.)
 
 Limits and refusals:
 - **Architecture.** Only `model_type: deepseek_v3` is admitted. Any other base is refused before weights are resolved.
@@ -901,15 +901,32 @@ above); it does not make the reference free.
 reports the complete projected footprint: the HF/local source, any regular-file copy Soup
 still needs, and the per-layer shard cache. Required writes are grouped by target volume and
 the run refuses before either write when that volume lacks free space. With
-`SOUP_LAYER_STREAM_STRIPE_DIRS` set, each root is charged the bytes it will receive,
-read from the source safetensors headers (the primary root also holds the embedding,
-head and extras); when a header cannot be read or the model is qwen4_exp the split is
-even and the panel says approximately. Override the two cache roots with
-`SOUP_SPECTRUM_CACHE_DIR` and `SOUP_LAYER_STREAM_CACHE_DIR`; both retain Soup's
-home/cwd/tmp containment policy.
+`SOUP_LAYER_STREAM_STRIPE_DIRS` set, each root is charged the bytes it will receive
+(the primary root also holds the embedding, head and extras); when a header cannot be
+read or the model is qwen4_exp the split is even and the panel says approximately.
+Override the two cache roots with `SOUP_SPECTRUM_CACHE_DIR` and
+`SOUP_LAYER_STREAM_CACHE_DIR`; both retain Soup's home/cwd/tmp containment policy.
 A shard cache Soup will reuse is reported at the size of its own files, on every drive it is
-striped over; one it has to write is reported at the estimate, or with two or more drives at
-the larger of the estimate and the bytes derived from the source headers.
+striped over. One it has to write is sized from the source safetensors headers (shapes and
+dtypes only: no weight is loaded), tensor by tensor, by the rules the sharder writes with:
+NF4 for the decoder weights the meta probe converts to 4-bit under `quantization: 4bit`,
+the stream dtype for norms, embeddings, the head, an MoE router and fused routed experts,
+float32 for the layer buffers the runtime loads back, plus an allowance for the file headers
+and the index. A snapshot that still has to be copied is read where the copy step reads it.
+A checkpoint the sharder would refuse (more than 512 decoder layers, a missing layer, an
+incomplete expert, one tensor spelled twice) is refused here, in the sharder's words, before
+anything is copied. When the files cannot be listed or a header cannot be read, the cache is
+charged the NF4 rate for every parameter and the panel says approximately; so does a
+qwen4_exp base that is not an oQ checkpoint, which keeps its source-size figure.
+
+This raises the figure for a dense base under `quantization: 4bit`, because the embeddings,
+an untied head and the norms stay at the stream dtype rather than NF4: Llama-3.1-8B goes from
+4.14 GB to 5.70 GB and Llama-3.2-1B from 0.64 GB to 1.03 GB (derived from their shapes), and
+Mistral-7B-Instruct-v0.3 from 3.74 GB to 4.14 GB, against a 4.14 GB cache measured on disk.
+A run that passed the pre-flight before by less than that margin is now refused: the old
+figure was low, and the sharder would have written the larger amount. The early RAM check
+(`stream_source: ram`, before sharding) still uses the flat NF4 rate; the check after sharding
+measures the real store.
 
 **Two or more NVMe drives.** On a cold store larger than RAM the disk-tier step can wait on the
 read (measured for a 70B-shaped store), and then one drive is the ceiling. Set
