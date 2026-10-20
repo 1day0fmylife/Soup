@@ -975,9 +975,13 @@ Listed by first contribution. PR numbers link the work.
 
 - **Abhishek Jha** ([@SpinachDigital](https://github.com/SpinachDigital))
   - Made `training.gradient_checkpointing: false`, including the schema default, reach all eleven Unsloth trainer setup paths instead of silently enabling checkpointing. Preserved explicit enabled settings, documented the possible activation-memory increase and workload-dependent performance, and pinned real-config forwarding with mocked-loader controls ([#797](https://github.com/MakazhanAlpamys/Soup/issues/797), [#1981](https://github.com/MakazhanAlpamys/Soup/pull/1981)).
+  - Closed #1645: pinned that the dpo and ipo blend terms read their own config fields (`dpo_beta`, `ipo_tau`), so swapping either read for the default or for each other fails the new test ([#1645](https://github.com/MakazhanAlpamys/Soup/issues/1645), [#2062](https://github.com/MakazhanAlpamys/Soup/pull/2062))
 
 - **Alexis** ([@bernalalexis-try](https://github.com/bernalalexis-try))
   - First contribution: `ship._fail` escaped Rich markup but let ESC and C1 bytes through, and `_verdict_live` forwards exception text from rendering a Hub model's chat template. They strip control characters first and then escape, and when the review asked for a test of that order they added one that fails when the two calls are swapped. 2 tests, 2 of 2 failing without the fix, 5 of 5 mutants killed ([#1869](https://github.com/MakazhanAlpamys/Soup/issues/1869), [#1872](https://github.com/MakazhanAlpamys/Soup/pull/1872))
+
+- **Aaditya Desai** ([@aadityad12](https://github.com/aadityad12))
+  - First contribution. Made `for_terminal` and `strip_control` also remove bidi controls (U+202A-U+202E, U+2066-U+2069, U+061C, U+200E, U+200F) and invisible separators (U+200B, U+2028, U+2029, U+FEFF) from dataset, adapter and evidence text before it is printed, while keeping ZWJ and ZWNJ for Arabic, Persian, Indic and emoji text; reproduction by @akkupratap323 ([#1861](https://github.com/MakazhanAlpamys/Soup/issues/1861), [#1953](https://github.com/MakazhanAlpamys/Soup/pull/1953))
 
 ---
 
