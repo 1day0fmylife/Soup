@@ -986,6 +986,9 @@ Listed by first contribution. PR numbers link the work.
 - **Shivansh Shukla** ([@ShivanshShukla](https://github.com/ShivanshShukla))
   - First contribution. Made `soup can run` remove the temporary directory it extracted a can into when env capture, deploy or the training subprocess fails, and check the `--env-capture` path before that directory is created; a caller-supplied `--extract-dir` is never removed ([#1464](https://github.com/MakazhanAlpamys/Soup/issues/1464), [#1960](https://github.com/MakazhanAlpamys/Soup/pull/1960))
 
+- **dryn85-max** ([@dryn85-max](https://github.com/dryn85-max))
+  - First contribution. Added native DPO on `backend: mlx` with Soup's own training loop (sigmoid loss, reference log-probs precomputed once from the base model, a chunked vocabulary head), reading rows through the same `format: dpo` converter as the transformers backend ([#1846](https://github.com/MakazhanAlpamys/Soup/pull/1846))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
