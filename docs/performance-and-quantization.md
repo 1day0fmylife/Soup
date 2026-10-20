@@ -507,6 +507,35 @@ Limits and refusals:
 - **Adapters on routed experts.** `moe_lora` is refused with this layout, because a streamed expert has nowhere to keep an adapter between its visits. Adapt attention or the shared expert instead.
 - **Older Soup versions.** A Soup from before this layout accepts a per-expert cache as reusable and then fails at install ("shard is missing decoder weights"). Delete the cache directory, or re-shard with `fused`, before going back to an older version.
 
+**FP8 block-quantised bases (DeepSeek-V3 family).** Layer streaming keeps a frozen base off the card and streams it in layer by layer (layer-to-layer streaming, L2L: Pudipeddi et al. 2020). DeepSeek-V3 is published as an FP8 block-quantised checkpoint, and Kimi K2 uses the same format. Soup now shards such a checkpoint by dequantising it as it writes the layer cache, instead of refusing it. There is no config key for this: the format is detected from the checkpoint.
+
+What the format is:
+- each decoder linear weight is `float8_e4m3fn`;
+- beside it, `<name>.weight_scale_inv` holds a float32 scale per 128 x 128 block;
+- `config.json` declares it in `quantization_config` (`quant_method: fp8`, `weight_block_size: [128, 128]`);
+- embeddings, the head, the norms and the router stay bf16.
+
+What the sharder does:
+- multiplies each FP8 weight by its block scales in fp32, cropping the last block at a ragged edge (DeepSeek's own dequantisation rule), and casts the result to the stream dtype;
+- stores it by the usual rules, so under `quantization: 4bit` the same weights become NF4 that would become NF4 from a bf16 checkpoint;
+- dequantises routed experts before they are stacked (`fused`) or written to their experts file (`per_expert`);
+- keeps a linear that the checkpoint stores in bf16 without a scale, beside FP8 siblings, as it is stored (DeepSeek-V3's checkpoints mix the two: only the FP8 tensors carry a scale);
+- works one band of rows at a time into an output already at the stream dtype, so a tensor costs its output plus a small fp32 band, and a block size past the matrix edge costs nothing extra;
+- never stores the scales. The streamed model is built at the stream dtype: the config's FP8 `quantization_config` is dropped from the streamed skeleton only, so `config.json` and every resident load are unchanged.
+
+Measured:
+- **Numerics.** On a tiny DeepSeek-V3, the model streamed from the FP8 checkpoint matches a resident model holding the same dequantised weights bit for bit, in its logits, loss and LoRA gradients, in both expert layouts. Its layer cache holds the same tensors, bit for bit, as the one sharded from those dequantised weights, NF4 included ([gate](../benchmarks/gate-fp8-shard.md)).
+- **Disk.** The pre-flight charges each FP8 weight at the rate its dequantised tensor is stored at, and nothing for the scales.
+- **A real checkpoint, CPU only.** Moonlight-16B-A3B, converted to this format, sharded in 93 s (27 layers, NF4, `fused`). The 30.60 GB cache came within 0.0002% of the pre-flight's figure (0.000115%: 35,336 bytes), and every FP8-derived tensor checked in three layers equals an independent dequantisation of the source. No GPU run is recorded yet.
+
+Limits and refusals:
+- **Architecture.** Only `model_type: deepseek_v3` is admitted. A Kimi K2 checkpoint declares `model_type: kimi_k2` and is still refused by name, FP8 or not.
+- **Other FP8 formats.** Each of these is refused, and the message names the supported format: per-tensor scales, `e5m2` weights, `compressed-tensors`, ue8m0 (power-of-two) scales, static activation scales, a missing or misshapen scale, an FP8 tensor without a scale, and a scale without its tensor. A `weight_block_size` axis outside [1, 1048576] is refused too. A spelling the config already gives away is refused at setup, before any weight is resolved or downloaded; the rest before the first byte of the cache is written.
+- **Damaged values.** A weight that is NaN after dequantisation (the e4m3fn bytes 0x7F and 0xFF), a negative scale, a non-finite scale, and a weight past float16's range under a float16 stream (pre-Ampere cards; stream it in bfloat16) are refused, naming the tensor, when that tensor is read: before the cache index is written, though files of earlier layers may already be on disk (no index names them, so they are never used, and the next run shards again). A zero scale, as an all-zero block has, is kept.
+- **Cache identity.** For `deepseek_v3`, `config.json` is part of the cache's source identity, as are the weight files, so a cache sharded from the bf16 checkpoint is never reused for its FP8 copy at the same path, nor the reverse.
+- **The early RAM check.** The check that runs before sharding still charges the FP8 files at their size on disk, about half the dequantised weights. A base that cannot fit in RAM may therefore be refused after sharding, by the exact check, rather than before it.
+- **After training.** The adapter is trained against the dequantised weights. Merging it or serving it loads the base through transformers' own FP8 path, which is a different numerical path from the one the adapter was trained on.
+
 **`stream_nf4_scale_cache` (opt-in).** On the dequantise + `F.linear` path, a
 double-quantised NF4 weight expands its 8-bit block scales to fp32 on every visit,
 forward and recompute alike: two small kernels and a temporary per projection.
@@ -757,6 +786,7 @@ prints this advice when it sees you accumulating.
 - `use_liger` / `use_flash_attn` → **not reached at all** under streaming (#1692). Both are read by the *resident* setup: Liger patches the MLP forward there, and flash-attn is handed to `from_pretrained` as `attn_implementation`. A streamed model is built by `from_config` with no attention argument and no Liger patch, and `_liger_applied` is never set, so `use_liger_kernel` misses `TrainingArguments` too. These are the switches you reach for when a streamed run will not fit, so they are refused rather than dropped; each is offered again once it is wired and shown to engage on a streamed model. On every task outside `{sft, tts}` they are already refused at config load (#806)
 - `stream_source` / `stream_ngram_source` / `stream_buffers` / `stream_read_ahead` / `stream_vram_override` / `stream_vram_probe` / `stream_nf4_scale_cache` / `stream_expert_layout` / `stream_disk_kind` / `stream_pin` set while `stream_layers: false` → a footgun, refused
 - `stream_expert_layout: per_expert` with `moe_lora` → refused: a routed expert streamed one at a time has nowhere to keep an adapter. On a base that is not `model_type: deepseek_v3` → refused at setup, before the weights are resolved
+- an FP8 checkpoint in any format other than DeepSeek-V3's block FP8, or an FP8 base that is not `model_type: deepseek_v3` → refused naming the supported format: at setup when `config.json` gives it away, otherwise before the cache is written. The block format itself is dequantised at shard time (see "FP8 block-quantised bases" above)
 - `stream_nf4_scale_cache` without `quantization: 4bit` and double quantization → refused: there are no nested NF4 scales to cache
 - a non-default `stream_read_ahead` beside `stream_source: ram` → refused. The read-ahead reader belongs to the NVMe disk tier and `ram` never falls back to it, so the setting would validate, be documented, and reach nothing. The default is accepted, because a default is not a decision
 - a disk-tier run whose host staging (`stream_read_ahead` layers, plus one slot each for the embedding and an untied `lm_head`) plus the resident extras will not fit the free-RAM headroom → refused by name, naming the depth to lower. Refused rather than clamped: a depth you set is a decision, and silently lowering it would hand back a slower run than the one you configured
@@ -914,8 +944,10 @@ the stream dtype for norms, embeddings, the head, an MoE router and fused routed
 float32 for the layer buffers the runtime loads back, plus an allowance for the file headers
 and the index. A snapshot that still has to be copied is read where the copy step reads it.
 A checkpoint the sharder would refuse (more than 512 decoder layers, a missing layer, an
-incomplete expert, one tensor spelled twice) is refused here, in the sharder's words, before
-anything is copied. When the files cannot be listed or a header cannot be read, the cache is
+incomplete expert, one tensor spelled twice, an FP8 spelling it does not dequantise) is
+refused here, in the sharder's words, before anything is copied. An FP8 block-quantised
+source is charged at the rate its dequantised tensors are stored at, and nothing for its
+block scales, which the sharder consumes. When the files cannot be listed or a header cannot be read, the cache is
 charged the NF4 rate for every parameter and the panel says approximately; so does a
 qwen4_exp base that is not an oQ checkpoint, which keeps its source-size figure.
 
