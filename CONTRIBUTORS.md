@@ -983,6 +983,9 @@ Listed by first contribution. PR numbers link the work.
 - **Aaditya Desai** ([@aadityad12](https://github.com/aadityad12))
   - First contribution. Made `for_terminal` and `strip_control` also remove bidi controls (U+202A-U+202E, U+2066-U+2069, U+061C, U+200E, U+200F) and invisible separators (U+200B, U+2028, U+2029, U+FEFF) from dataset, adapter and evidence text before it is printed, while keeping ZWJ and ZWNJ for Arabic, Persian, Indic and emoji text; reproduction by @akkupratap323 ([#1861](https://github.com/MakazhanAlpamys/Soup/issues/1861), [#1953](https://github.com/MakazhanAlpamys/Soup/pull/1953))
 
+- **Shivansh Shukla** ([@ShivanshShukla](https://github.com/ShivanshShukla))
+  - First contribution. Made `soup can run` remove the temporary directory it extracted a can into when env capture, deploy or the training subprocess fails, and check the `--env-capture` path before that directory is created; a caller-supplied `--extract-dir` is never removed ([#1464](https://github.com/MakazhanAlpamys/Soup/issues/1464), [#1960](https://github.com/MakazhanAlpamys/Soup/pull/1960))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
