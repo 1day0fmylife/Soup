@@ -998,6 +998,9 @@ Listed by first contribution. PR numbers link the work.
 - **Tanmay Garg** ([@Tanmay9223](https://github.com/Tanmay9223))
   - First contribution. Moved the PRM, MoLE routing and PPO wrappers onto the shared warmup resolution, and made PPO honour `--deepspeed`, take `response_length` from `data.max_length` and keep 3 saves ([#805](https://github.com/MakazhanAlpamys/Soup/issues/805), [#1775](https://github.com/MakazhanAlpamys/Soup/pull/1775))
 
+- **Vishal Kumar Singh** ([@Vishalkumarsingh6428](https://github.com/Vishalkumarsingh6428))
+  - First contribution. Preference tasks (dpo, ipo, simpo, orpo, bco, preference) with `llava` / `sharegpt4v` rows are refused at config load instead of failing after the model loads, and the unsupported `pixtral-dpo` recipe is retired ([#1867](https://github.com/MakazhanAlpamys/Soup/issues/1867), [#2064](https://github.com/MakazhanAlpamys/Soup/pull/2064))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
