@@ -939,6 +939,7 @@ class StreamingSetupMixin:
             quantised_layer_suffixes,
         )
         from soup_cli.utils.moe import resolve_moe_lora_targets
+        from soup_cli.utils.peft_wiring import resolve_lora_target_modules
         from soup_cli.utils.qwen4_ple import external_tensor_bytes
         from soup_cli.utils.spectrum_scan import resolve_model_weights
         from soup_cli.utils.stripe_roots import resolve_stripe_roots
@@ -1048,20 +1049,34 @@ class StreamingSetupMixin:
         # It runs BEFORE the weights are resolved: it needs only the config, and
         # the disk pre-flight below sizes the shard cache by these same suffixes.
         quant_suffixes = ()
-        moe_targets = None
+        # The attention targets (``auto`` resolved, or the user's list), first:
+        # they need only the config, and the moe_lora helper below must EXTEND a
+        # list target, as it does on the resident trainers since #1590 (a string
+        # target -- qwen4_exp's "all-linear", a regex -- it replaces, on both
+        # paths). Handing it ``None`` and replacing the list with its answer
+        # dropped every name the MoE list does not repeat -- MLA's q_a/q_b/kv_a/kv_b
+        # projections, Qwen3.5's in_proj_qkv / out_proj -- and an explicit list.
+        target_modules = resolve_lora_target_modules(
+            model_config, tcfg.lora.target_modules, console
+        )
         # #798: the ONE helper that turns moe_lora into targets, and refuses a
         # dropout peft cannot honour on fused experts. This path kept its own
         # copy of the block, which is why it was the one path with no refusal.
         # The probe is a meta skeleton and is the only model available here, so
         # the call happens while it is alive rather than at the attach below.
+        # With moe_lora off it returns ``target_modules`` unchanged.
         if quant == QUANT_NF4:
             probe = self._stream_meta_skeleton(cfg.base, dtype=dtype, quant=quant)
-            moe_targets = resolve_moe_lora_targets(probe, tcfg, None, console=console)
+            target_modules = resolve_moe_lora_targets(
+                probe, tcfg, target_modules, console=console
+            )
             quant_suffixes = quantised_layer_suffixes(probe)
             del probe
         elif tcfg.moe_lora:
             probe = self._stream_meta_skeleton(cfg.base, dtype=dtype, quant=quant)
-            moe_targets = resolve_moe_lora_targets(probe, tcfg, None, console=console)
+            target_modules = resolve_moe_lora_targets(
+                probe, tcfg, target_modules, console=console
+            )
             del probe
 
         # One set of arguments for every header estimate of this run's cache.
@@ -1426,6 +1441,7 @@ class StreamingSetupMixin:
             large_layer_bytes=large_budget_bytes,
             index=index,
             on_cuda=on_cuda,
+            target_modules=target_modules,
         )
         console.print(render_stream_panel(plan, forecast_lines))
         console.print(
@@ -1437,17 +1453,10 @@ class StreamingSetupMixin:
             if not enabled:
                 console.print(f"[dim]expandable_segments allocator hint not enabled: {why_not}[/]")
 
-        from soup_cli.utils.peft_wiring import (
-            build_lora_config,
-            resolve_lora_target_modules,
-        )
+        from soup_cli.utils.peft_wiring import build_lora_config
 
-        target_modules = resolve_lora_target_modules(
-            model_config, tcfg.lora.target_modules, console
-        )
-        if moe_targets:
-            # Already announced by resolve_moe_lora_targets when the probe ran.
-            target_modules = moe_targets
+        # ``target_modules`` was settled before the probe was deleted, moe_lora's
+        # additions included (already announced by resolve_moe_lora_targets).
         lora_config = build_lora_config(
             tcfg.lora,
             target_modules=target_modules,
@@ -1601,27 +1610,46 @@ class StreamingSetupMixin:
             setattr(trainer, HOOK_ATTR, None)
         self._stream_loss_chunk_hook = None
 
-    def _estimate_adapter_params(self, tcfg, model_config) -> int:
+    def _estimate_adapter_params(self, tcfg, model_config, target_modules=None) -> int:
         """Trainable adapter parameters, before the model exists.
 
         Deliberately coarse and biased HIGH: it assumes every targeted module is
         hidden x hidden. Gate/up/down projections are larger, but the whole
         adapter term is ~0.5% of a streaming step's peak, so precision here buys
         nothing while under-counting would eat into the safety margin.
+
+        ``target_modules`` is what the setup resolved. Under ``moe_lora`` it is
+        counted instead of the configured value, because it is what attaches: the
+        union of the attention targets and the MoE names, once per layer, plus one
+        adapter per routed expert for each fused expert tensor peft is handed as
+        ``target_parameters``. Counting the configured value charged
+        ``['o_proj']`` one target per layer. Measured against a real attach: 1.80x
+        at DeepSeek-V3's dimensions, 1.45x at Qwen3.5-MoE's. Without ``moe_lora``
+        the configured value is counted, as before.
         """
         shape_cfg = StreamingSetupMixin._stream_shape_config(model_config)
         hidden = int(getattr(shape_cfg, "hidden_size", 0) or 0)
         layers = int(getattr(shape_cfg, "num_hidden_layers", 0) or 0)
-        targets = tcfg.lora.target_modules
         experts = StreamingSetupMixin._stream_total_experts(model_config)
+        moe = bool(getattr(tcfg, "moe_lora", False)) and experts > 1
+        targets = tcfg.lora.target_modules
+        if moe and target_modules is not None:
+            targets = target_modules
         if isinstance(targets, (list, tuple)):
             target_names = [str(name) for name in targets]
             n_targets = len(target_names)
-            if getattr(tcfg, "moe_lora", False) and experts > 1:
+            fused = list(getattr(targets, "target_parameters", None) or ())
+            if moe and fused:
+                # Fused routed experts (transformers 5): the module names reach the
+                # dense / shared-expert projections once per layer, and each fused
+                # tensor carries one adapter per routed expert.
+                n_targets += experts * len(fused)
+            elif moe:
+                # One nn.Linear per expert: an expert name matches every expert.
                 expert_suffixes = {"gate_proj", "up_proj", "down_proj", "w1", "w2", "w3"}
                 expert_patterns = {name for name in target_names if name in expert_suffixes}
                 n_targets += (experts - 1) * len(expert_patterns)
-        elif getattr(tcfg, "moe_lora", False) and experts > 1:
+        elif moe:
             n_targets = 4 + 3 * experts
         else:
             n_targets = 4
@@ -1638,11 +1666,14 @@ class StreamingSetupMixin:
         index,
         on_cuda,
         large_layer_bytes=0,
+        target_modules=None,
     ):
         """Predict peak VRAM + bracket throughput, and REFUSE a run that cannot fit.
 
         Returns ``(panel_lines, probe_plan)``, where ``probe_plan`` is ``None``
         unless ``training.stream_vram_probe`` asked for the measured gate (#349).
+        ``target_modules`` is the resolved LoRA target list the attach will use
+        (see :meth:`_estimate_adapter_params`).
 
         Raises when the step is predicted not to fit: on Linux that would be a
         hard OOM, and on Windows something worse — WDDM spills to host memory
@@ -1725,7 +1756,9 @@ class StreamingSetupMixin:
             layer_bytes=layer_bytes,
             buffers=tcfg.stream_buffers,
             extras_bytes=embed_bytes,
-            adapter_params=self._estimate_adapter_params(tcfg, model_config),
+            adapter_params=self._estimate_adapter_params(
+                tcfg, model_config, target_modules=target_modules
+            ),
             vocab_size=vocab,
             hidden_size=hidden,
             intermediate_size=inter,
