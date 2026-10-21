@@ -1015,6 +1015,9 @@ Listed by first contribution. PR numbers link the work.
 - **martin** ([@Martini147](https://github.com/Martini147))
   - First contribution. An output that was also an input destroyed the input in `soup ingest` (the default `traces.jsonl`), `soup prune-prompt`, `soup ra-dit` and `soup data best-of-n`; they added one shared `ensure_distinct_paths` helper (realpath, case folding, hard links, optional nesting) and wired it into all four commands, then took the review through Windows case-variant, symlink and hard-link tests whose mutants (realpath to abspath on either side, no normcase, no samefile) each fail a named test; 154 tests in 8 files pass ([#1422](https://github.com/MakazhanAlpamys/Soup/issues/1422), [#2018](https://github.com/MakazhanAlpamys/Soup/pull/2018))
 
+- **Rahul Seervi** ([@Rahul-cs50](https://github.com/Rahul-cs50))
+  - First contribution. `rollout_backend: ruler` now names `openpipe-art` (the package RULER ships in) instead of a package that is not on PyPI, and an unrelated `ruler` library no longer satisfies the import probe ([#2046](https://github.com/MakazhanAlpamys/Soup/issues/2046), [#2059](https://github.com/MakazhanAlpamys/Soup/pull/2059))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
