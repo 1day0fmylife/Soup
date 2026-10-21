@@ -996,6 +996,7 @@ Listed by first contribution. PR numbers link the work.
 - **dryn85-max** ([@dryn85-max](https://github.com/dryn85-max))
   - First contribution. Added native DPO on `backend: mlx` with Soup's own training loop (sigmoid loss, reference log-probs precomputed once from the base model, a chunked vocabulary head), reading rows through the same `format: dpo` converter as the transformers backend ([#1846](https://github.com/MakazhanAlpamys/Soup/pull/1846))
   - Made `backend: mlx` skip a validation split smaller than one batch with a warning, and refuse a training split smaller than one batch before the model loads, instead of crashing at the first evaluation ([#1851](https://github.com/MakazhanAlpamys/Soup/issues/1851), [#1857](https://github.com/MakazhanAlpamys/Soup/pull/1857))
+  - Added native ORPO on `backend: mlx` (TRL 0.29.1's odds-ratio objective with the chosen-sequence NLL, reference-free, TRL-identical tokens on rows that fit), sharing MLX DPO's training loop through objective hooks ([#2004](https://github.com/MakazhanAlpamys/Soup/issues/2004), [#2073](https://github.com/MakazhanAlpamys/Soup/pull/2073))
 
 - **Tanmay Garg** ([@Tanmay9223](https://github.com/Tanmay9223))
   - First contribution. Moved the PRM, MoLE routing and PPO wrappers onto the shared warmup resolution, and made PPO honour `--deepspeed`, take `response_length` from `data.max_length` and keep 3 saves ([#805](https://github.com/MakazhanAlpamys/Soup/issues/805), [#1775](https://github.com/MakazhanAlpamys/Soup/pull/1775))
