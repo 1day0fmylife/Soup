@@ -1010,6 +1010,9 @@ Listed by first contribution. PR numbers link the work.
 - **Vishal Kumar Singh** ([@Vishalkumarsingh6428](https://github.com/Vishalkumarsingh6428))
   - First contribution. Preference tasks (dpo, ipo, simpo, orpo, bco, preference) with `llava` / `sharegpt4v` rows are refused at config load instead of failing after the model loads, and the unsupported `pixtral-dpo` recipe is retired ([#1867](https://github.com/MakazhanAlpamys/Soup/issues/1867), [#2064](https://github.com/MakazhanAlpamys/Soup/pull/2064))
 
+- **martin** ([@Martini147](https://github.com/Martini147))
+  - First contribution. An output that was also an input destroyed the input in `soup ingest` (the default `traces.jsonl`), `soup prune-prompt`, `soup ra-dit` and `soup data best-of-n`; they added one shared `ensure_distinct_paths` helper (realpath, case folding, hard links, optional nesting) and wired it into all four commands, then took the review through Windows case-variant, symlink and hard-link tests whose mutants (realpath to abspath on either side, no normcase, no samefile) each fail a named test; 154 tests in 8 files pass ([#1422](https://github.com/MakazhanAlpamys/Soup/issues/1422), [#2018](https://github.com/MakazhanAlpamys/Soup/pull/2018))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
