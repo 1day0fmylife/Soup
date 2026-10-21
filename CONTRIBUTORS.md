@@ -1020,6 +1020,9 @@ Listed by first contribution. PR numbers link the work.
 - **Rahul Seervi** ([@Rahul-cs50](https://github.com/Rahul-cs50))
   - First contribution. `rollout_backend: ruler` now names `openpipe-art` (the package RULER ships in) instead of a package that is not on PyPI, and an unrelated `ruler` library no longer satisfies the import probe ([#2046](https://github.com/MakazhanAlpamys/Soup/issues/2046), [#2059](https://github.com/MakazhanAlpamys/Soup/pull/2059))
 
+- **Matt Van Horn** ([@mvanhorn](https://github.com/mvanhorn))
+  - First contribution. Made `training.use_mod: true` fail at config load on every task and backend route that never installs a Mixture-of-Depths router, with a message naming the route and the way out ([#1752](https://github.com/MakazhanAlpamys/Soup/issues/1752), [#1757](https://github.com/MakazhanAlpamys/Soup/pull/1757))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
