@@ -1005,7 +1005,23 @@ Loading a local adapter folder directly also reuses that commit when its
 `adapter_config.json` names the same base and has no conflicting explicit revision;
 the tokenizer still comes from the adapter folder.
 
-**Remaining boundaries:** Non-HF hubs, Unsloth, MLX and distributed loads remain unbound and
+For a multi-process Hugging Face Transformers `soup train` launch, global rank zero
+resolves the base once and broadcasts its nullable result before trainer setup.
+Soup initializes or reuses Accelerate's shared process group with Trainer's default
+1800-second timeout. The first initialization sets the timeout for every collective,
+including later Trainer operations; an existing group keeps its original timeout.
+Offline/failed metadata requests
+are broadcast as unknown, preserving existing loading behavior. A collective
+failure stops the run rather than letting workers resolve independent moving heads.
+Ranks compare identity receipts after setup and training; a conflicting loaded
+model commit on any rank clears the bound revision for every rank before recording
+the final artifact. CPU/Gloo coordination is covered by real two-process tests on
+Linux; simulated-rank checks run on every platform. The real cases skip on macOS
+and Windows because env:// rendezvous can time out on loaded macOS runners. Rank
+failures include both child logs after cleanup. NCCL/FSDP hardware execution is
+not established by those tests.
+
+**Remaining boundaries:** Non-HF hubs, Unsloth and MLX loads remain unbound and
 are recorded as such; a cache-path hint on any backend is still unverified. Standalone
 wrapper/sweep invocations do not automatically establish a run scope. Metadata is
 written for the final artifact, not each intermediate checkpoint. Other exporters
