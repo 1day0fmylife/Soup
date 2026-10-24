@@ -1064,6 +1064,9 @@ Listed by first contribution. PR numbers link the work.
 - **Kuanysh** ([@kuanysh228](https://github.com/kuanysh228))
   - First contribution: `soup merge` loaded the whole base model into memory before adding the adapter, so a machine that could fine-tune a model could not always merge it. They added `--low-memory`, which merges a plain LoRA adapter into a safetensors base one tensor at a time with the same tensor values as the regular merge. Review asked for the guards the first version lacked (a quantized base weight wrote a malformed shard and still reported success) and for the refusals to be tested; the follow-up grew the test file from 13 to 84 cases, staged the output, and pinned the order of the checks. ([#2006](https://github.com/MakazhanAlpamys/Soup/pull/2006))
 
+- **Daivik Awasthi** ([@daivikawasthi01](https://github.com/daivikawasthi01))
+  - First contribution. Made `tests/test_errors.py` pass with colour forced on by reading the console through `strip_ansi` ([#2173](https://github.com/MakazhanAlpamys/Soup/issues/2173), [#2176](https://github.com/MakazhanAlpamys/Soup/pull/2176))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
