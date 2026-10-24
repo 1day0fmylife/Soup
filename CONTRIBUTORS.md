@@ -1059,6 +1059,9 @@ Listed by first contribution. PR numbers link the work.
 - **Matt Van Horn** ([@mvanhorn](https://github.com/mvanhorn))
   - First contribution. Made `training.use_mod: true` fail at config load on every task and backend route that never installs a Mixture-of-Depths router, with a message naming the route and the way out ([#1752](https://github.com/MakazhanAlpamys/Soup/issues/1752), [#1757](https://github.com/MakazhanAlpamys/Soup/pull/1757))
 
+- **Kuanysh** ([@kuanysh228](https://github.com/kuanysh228))
+  - First contribution: `soup merge` loaded the whole base model into memory before adding the adapter, so a machine that could fine-tune a model could not always merge it. They added `--low-memory`, which merges a plain LoRA adapter into a safetensors base one tensor at a time with the same tensor values as the regular merge. Review asked for the guards the first version lacked (a quantized base weight wrote a malformed shard and still reported success) and for the refusals to be tested; the follow-up grew the test file from 13 to 84 cases, staged the output, and pinned the order of the checks. ([#2006](https://github.com/MakazhanAlpamys/Soup/pull/2006))
+
 ---
 
 Want to join this list? See [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are
