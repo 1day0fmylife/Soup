@@ -9229,6 +9229,22 @@ class SoupConfig(BaseModel):
         )
 
     @model_validator(mode="after")
+    def _reject_resident_kimi_k2(self) -> "SoupConfig":
+        """K2 remote code cannot import or train on the supported 5.x stack."""
+        from soup_cli.utils.kimi import resident_kimi_k2_refusal
+
+        reason = resident_kimi_k2_refusal(
+            self.base, backend=self.backend, hub=self.training.hub,
+            stream_layers=self.training.stream_layers,
+        )
+        if reason is not None:
+            raise ValueError(
+                f"{reason} base={self.base}. Its remote code uses removed APIs "
+                "and an inference-only MoE training path. Choose a compatible base."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_unsloth_sft_modality(self) -> "SoupConfig":
         """#1186: multimodal SFT setup does not use the requested Unsloth backend."""
         if self.task == "sft" and self.backend == "unsloth" and self.modality != "text":
